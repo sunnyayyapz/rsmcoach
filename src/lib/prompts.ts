@@ -5,9 +5,15 @@ export const SYSTEM_PROMPT = `You are an RSM-style math coach. Guide the student
 
 HARD RULES (NEVER VIOLATE):
 - Never provide the final answer (numeric, symbolic, or verbal).
-- Never confirm final correctness with phrases like "correct", "you got it", "that's right" for the final result.
 - Do not produce a complete worked solution.
 - Do not reveal which multiple-choice option is correct.
+
+ANSWER CONFIRMATION POLICY:
+- You MAY confirm when a student gets the correct answer, BUT only if they show their reasoning/work.
+- If a student just guesses without explanation (e.g., "is it 42?", "is it A?"), do NOT confirm or deny.
+- Instead, ask them to explain HOW they got that answer before you'll check it.
+- Say something like: "Before I can check that, walk me through how you arrived at that answer."
+- This prevents trial-and-error guessing while rewarding genuine problem-solving.
 
 YOU MAY:
 - Rephrase the problem to ensure understanding
@@ -17,6 +23,7 @@ YOU MAY:
 - Validate intermediate reasoning ("your setup looks valid so far")
 - Suggest testing with smaller examples
 - Offer alternative approaches when stuck
+- Confirm correct final answers when student shows their work
 
 RSM PEDAGOGY - ALWAYS PREFER:
 - Structure and patterns over memorization
@@ -120,17 +127,21 @@ export const ANSWER_SEEKING_PATTERNS = [
   /what is the value of/i,
 ];
 
-// Test 2: Confirmation Leakage Detection
-// Prompts: "is 42 correct?", "did I get it right?"
-export const CONFIRMATION_SEEKING_PATTERNS = [
-  /is (it |the answer |this )?(correct|right|\d+)/i,
-  /did I get it (right|correct)/i,
-  /is (\d+|[a-z]) (correct|right|the answer)/i,
-  /am I (right|correct)/i,
-  /check (my|the) answer/i,
-  /is this (the )?(correct|right) (answer|solution)/i,
-  /confirm (the|my|this) (answer|result)/i,
-  /tell me if (I'm|I am) (right|correct)/i,
+// Test 2: Bare Guess Detection (no reasoning shown)
+// These patterns detect when student is just guessing without showing work
+export const BARE_GUESS_PATTERNS = [
+  /^is (it |the answer )?(\d+|[a-zA-Z])\??$/i,  // "is it 42?" or "is it A?"
+  /^(\d+)\??$/i,  // just "42?" 
+  /^(option |choice )?[A-E]\??$/i,  // just "A?" or "option B?"
+  /^is (it |the answer )?(correct|right)\??$/i,  // "is it correct?" without stating answer
+];
+
+// Confirmation with work shown - these are OK to respond to
+export const CONFIRMATION_WITH_WORK_PATTERNS = [
+  /so .+ (equals?|is|=) .+/i,  // "so x equals 5 because..."
+  /I (got|calculated|found|computed) .+ (because|since|by)/i,
+  /after .+ing .+ I get/i,  // "after adding... I get"
+  /therefore|thus|which (means|gives)/i,
 ];
 
 // Test 3: Near-Final Inference Detection
@@ -158,14 +169,15 @@ export const ANSWER_LEAKING_PATTERNS = [
   /the (value|result) is \d+/i,
 ];
 
-// Confirmation leaking patterns
-export const CONFIRMATION_LEAKING_PATTERNS = [
+// Allowed confirmation phrases (when student shows work)
+export const ALLOWED_CONFIRMATION_PATTERNS = [
   /yes,? (that'?s|you('re| are)) (correct|right)/i,
   /correct!$/i,
   /right!$/i,
   /you got it/i,
   /that is (correct|right|the answer)/i,
-  /\d+ is (correct|right)/i,
+  /well done/i,
+  /excellent (work|reasoning)/i,
 ];
 
 // Test 4: Pedagogy Integrity - Formula dump detection
@@ -184,6 +196,14 @@ export const REFUSAL_TEMPLATES = [
   "Finding the answer yourself will make it stick better. Here's what to think about next...",
 ];
 
+// Templates for when student guesses without showing work
+export const SHOW_WORK_TEMPLATES = [
+  "Before I can check that, walk me through how you arrived at that answer.",
+  "I'd love to verify that! Can you show me your reasoning first?",
+  "Good guess! But let's make sure you understand why. How did you get that?",
+  "I can confirm once you explain your thinking. What steps did you take?",
+];
+
 // Test 5: Persistence templates - for when student says "I'm stuck"
 export const PERSISTENCE_TEMPLATES = [
   "I hear you! Let's try a different angle. What if we used smaller numbers to see the pattern?",
@@ -197,17 +217,24 @@ export function detectAnswerSeeking(message: string): boolean {
   return ANSWER_SEEKING_PATTERNS.some(pattern => pattern.test(message));
 }
 
-export function detectConfirmationSeeking(message: string): boolean {
-  return CONFIRMATION_SEEKING_PATTERNS.some(pattern => pattern.test(message));
+export function detectBareGuess(message: string): boolean {
+  return BARE_GUESS_PATTERNS.some(pattern => pattern.test(message.trim()));
+}
+
+export function detectConfirmationWithWork(message: string): boolean {
+  return CONFIRMATION_WITH_WORK_PATTERNS.some(pattern => pattern.test(message));
 }
 
 export function detectNearFinal(message: string): boolean {
   return NEAR_FINAL_PATTERNS.some(pattern => pattern.test(message));
 }
 
+export function getRandomShowWorkPrompt(): string {
+  return SHOW_WORK_TEMPLATES[Math.floor(Math.random() * SHOW_WORK_TEMPLATES.length)];
+}
+
 export function detectAnswerLeaking(response: string): boolean {
-  return ANSWER_LEAKING_PATTERNS.some(pattern => pattern.test(response)) ||
-         CONFIRMATION_LEAKING_PATTERNS.some(pattern => pattern.test(response));
+  return ANSWER_LEAKING_PATTERNS.some(pattern => pattern.test(response));
 }
 
 export function detectStuck(message: string): boolean {
