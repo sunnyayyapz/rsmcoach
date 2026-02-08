@@ -6,12 +6,14 @@ import {
   HINT_PROMPTS, 
   REFLECTION_PROMPT,
   detectAnswerSeeking,
-  detectConfirmationSeeking,
+  detectBareGuess,
+  detectConfirmationWithWork,
   detectNearFinal,
   detectStuck,
   detectAnswerLeaking,
   getRandomRefusal,
   getRandomPersistence,
+  getRandomShowWorkPrompt,
 } from '@/lib/prompts';
 
 // Simulated OCR - in production, use a real OCR service
@@ -53,9 +55,16 @@ function simulateAIResponse(
           return;
         }
         
-        // Test 2: Confirmation Leakage - don't confirm/deny, ask for justification
-        if (detectConfirmationSeeking(content)) {
-          resolve("Rather than confirming, let's think about how you'd **verify** your answer. Can you check it using a different method? Or try plugging it back into the original problem to see if it makes sense.");
+        // Test 2: Bare guess detection - ask for work before confirming
+        if (detectBareGuess(content)) {
+          const showWork = getRandomShowWorkPrompt();
+          resolve(showWork);
+          return;
+        }
+        
+        // If they show work with their answer, we can acknowledge it more positively
+        if (detectConfirmationWithWork(content)) {
+          resolve("That's a solid reasoning process! Let me see if you can verify this yourself—can you plug your answer back into the original problem and check if it makes sense?");
           return;
         }
         
