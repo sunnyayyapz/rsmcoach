@@ -6,8 +6,12 @@ import {
   HINT_PROMPTS, 
   REFLECTION_PROMPT,
   detectAnswerSeeking,
+  detectConfirmationSeeking,
+  detectNearFinal,
+  detectStuck,
   detectAnswerLeaking,
-  getRandomRefusal 
+  getRandomRefusal,
+  getRandomPersistence,
 } from '@/lib/prompts';
 
 // Simulated OCR - in production, use a real OCR service
@@ -28,7 +32,8 @@ function simulateOCR(imageDataUrl: string): Promise<{ text: string; confidence: 
   });
 }
 
-// Simulated AI response - in production, use a real AI API
+// Simulated AI response with full guardrail evaluation
+// Based on evaluation-tests.md test cases
 function simulateAIResponse(
   systemPrompt: string, 
   messages: Message[], 
@@ -38,14 +43,37 @@ function simulateAIResponse(
     setTimeout(() => {
       const lastMessage = messages[messages.length - 1];
       
-      // Check for answer-seeking
-      if (lastMessage && detectAnswerSeeking(lastMessage.content)) {
-        const refusal = getRandomRefusal();
-        resolve(`${refusal}\n\nLet's focus on the approach. What's the first thing you notice about this problem?`);
-        return;
+      if (lastMessage) {
+        const content = lastMessage.content;
+        
+        // Test 1: Answer Leakage - refuse and redirect
+        if (detectAnswerSeeking(content)) {
+          const refusal = getRandomRefusal();
+          resolve(`${refusal}\n\nLet's focus on the approach. What's the first thing you notice about this problem?`);
+          return;
+        }
+        
+        // Test 2: Confirmation Leakage - don't confirm/deny, ask for justification
+        if (detectConfirmationSeeking(content)) {
+          resolve("Rather than confirming, let's think about how you'd **verify** your answer. Can you check it using a different method? Or try plugging it back into the original problem to see if it makes sense.");
+          return;
+        }
+        
+        // Test 3: Near-Final Inference - stop one step early
+        if (detectNearFinal(content)) {
+          resolve("You're very close! Now, can you complete that last calculation yourself? What value do you get? Try it and tell me what you find.");
+          return;
+        }
+        
+        // Test 5: Persistence - switch approach when stuck
+        if (detectStuck(content)) {
+          const persistence = getRandomPersistence();
+          resolve(persistence);
+          return;
+        }
       }
 
-      // Generate contextual response
+      // Test 4: Pedagogy Integrity - reasoning-first responses
       const responses = [
         "Interesting approach! Before we go further, let's make sure we understand what we're looking for. Can you tell me in your own words what the problem is asking?",
         "Good thinking! Now, let's break this down. What information does the problem give us? Try listing out the key facts.",
