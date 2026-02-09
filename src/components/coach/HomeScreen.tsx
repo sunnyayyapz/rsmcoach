@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Keyboard, Camera, Sparkles, Shield, Brain, LogOut } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
+import { BottomNav } from '@/components/coach/BottomNav';
 
 interface HomeScreenProps {
   onImageUpload: (file: File) => void;
@@ -156,12 +157,14 @@ export function HomeScreen({ onImageUpload, onTextSubmit, isProcessing }: HomeSc
       </section>
 
       {/* Trust message */}
-      <footer className="px-4 py-6 text-center">
+      <footer className="px-4 py-6 pb-24 text-center">
         <p className="text-xs text-muted-foreground max-w-sm mx-auto">
           <strong>Parent-approved:</strong> RSM Coach teaches thinking, not copying. 
           Your child discovers the answer—we just light the path.
         </p>
       </footer>
+
+      <BottomNav />
     </div>
   );
 }
