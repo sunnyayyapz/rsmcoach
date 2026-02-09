@@ -1,174 +1,16 @@
 import { useState, useCallback } from 'react';
+import { supabase } from '@/integrations/supabase/client';
 import type { Message, Problem, Session, TutoringState } from '@/types/coach';
-import { 
-  SYSTEM_PROMPT, 
-  ANALYSIS_PROMPT, 
-  HINT_PROMPTS, 
-  REFLECTION_PROMPT,
-  detectAnswerSeeking,
-  detectBareGuess,
-  detectConfirmationWithWork,
-  detectNearFinal,
-  detectStuck,
-  detectAnswerLeaking,
-  getRandomRefusal,
-  getRandomPersistence,
-  getRandomShowWorkPrompt,
-} from '@/lib/prompts';
+import { toast } from 'sonner';
 
-// Simulated OCR - in production, use a real OCR service
-function simulateOCR(imageDataUrl: string): Promise<{ text: string; confidence: number }> {
-  return new Promise((resolve) => {
-    setTimeout(() => {
-      // Simulate extracted text with varying confidence
-      const sampleProblems = [
-        { text: "Find the sum of all integers from 1 to 100.", confidence: 0.95 },
-        { text: "A rectangle has a perimeter of 24 cm. If the length is twice the width, find the dimensions.", confidence: 0.88 },
-        { text: "If 3x + 7 = 22, what is the value of x?", confidence: 0.92 },
-        { text: "The sum of three consecutive even numbers is 48. What are the numbers?", confidence: 0.85 },
-        { text: "A train travels 180 miles in 3 hours. At this rate, how far will it travel in 5 hours?", confidence: 0.91 },
-      ];
-      const selected = sampleProblems[Math.floor(Math.random() * sampleProblems.length)];
-      resolve(selected);
-    }, 1500);
-  });
-}
-
-// Simulated AI response with full guardrail evaluation
-// Based on evaluation-tests.md test cases
-function simulateAIResponse(
-  systemPrompt: string, 
-  messages: Message[], 
-  problemContext: string
-): Promise<string> {
-  return new Promise((resolve) => {
-    setTimeout(() => {
-      const lastMessage = messages[messages.length - 1];
-      
-      if (lastMessage) {
-        const content = lastMessage.content;
-        
-        // Test 1: Answer Leakage - refuse and redirect
-        if (detectAnswerSeeking(content)) {
-          const refusal = getRandomRefusal();
-          resolve(`${refusal}\n\nLet's focus on the approach. What's the first thing you notice about this problem?`);
-          return;
-        }
-        
-        // Test 2: Bare guess detection - ask for work before confirming
-        if (detectBareGuess(content)) {
-          const showWork = getRandomShowWorkPrompt();
-          resolve(showWork);
-          return;
-        }
-        
-        // If they show work with their answer, we can acknowledge it more positively
-        if (detectConfirmationWithWork(content)) {
-          resolve("That's a solid reasoning process! Let me see if you can verify this yourself—can you plug your answer back into the original problem and check if it makes sense?");
-          return;
-        }
-        
-        // Test 3: Near-Final Inference - stop one step early
-        if (detectNearFinal(content)) {
-          resolve("You're very close! Now, can you complete that last calculation yourself? What value do you get? Try it and tell me what you find.");
-          return;
-        }
-        
-        // Test 5: Persistence - switch approach when stuck
-        if (detectStuck(content)) {
-          const persistence = getRandomPersistence();
-          resolve(persistence);
-          return;
-        }
-      }
-
-      // Test 4: Pedagogy Integrity - reasoning-first responses
-      const responses = [
-        "Interesting approach! Before we go further, let's make sure we understand what we're looking for. Can you tell me in your own words what the problem is asking?",
-        "Good thinking! Now, let's break this down. What information does the problem give us? Try listing out the key facts.",
-        "I like where you're going with this. What pattern do you notice in the numbers? Sometimes finding a pattern helps us see the structure.",
-        "That's a good start! Let's try a smaller example first. What if we had just 5 numbers instead of 100? What would the sum be?",
-        "You're on the right track. What stays the same as we work through this problem? Finding the invariant can be really helpful.",
-        "Great observation! Now, can you think of another way to approach this? Sometimes looking at a problem from a different angle reveals the solution.",
-        "Excellent work so far! What's the relationship between the quantities in this problem? Try expressing it as an equation or drawing a diagram.",
-        "You're making good progress! Let's verify your reasoning with a quick check. Does your approach work for a simpler version of this problem?",
-      ];
-      
-      resolve(responses[Math.floor(Math.random() * responses.length)]);
-    }, 1000 + Math.random() * 1000);
-  });
-}
-
-function generateHint(level: 1 | 2 | 3, problemContext: string): Promise<string> {
-  return new Promise((resolve) => {
-    setTimeout(() => {
-      const hints = {
-        1: [
-          "This problem is about finding a pattern. What do you notice about how the numbers are arranged?",
-          "Before calculating, think about what type of problem this is. Have you seen something similar before?",
-          "Start by identifying what's changing and what stays the same in this problem.",
-        ],
-        2: [
-          "Try pairing up numbers from opposite ends. What do you notice about each pair?",
-          "Set up the relationship between the quantities as an equation. What does each part represent?",
-          "Draw a quick diagram or make a table. Visual representation often reveals the structure.",
-        ],
-        3: [
-          "Look at the first and last numbers. Now look at the second and second-to-last. What's the pattern in these sums?",
-          "Write out the equation with the specific values from the problem. Now isolate the unknown step by step.",
-          "Count how many pairs you can make. Multiply by the sum of each pair. What do you get?",
-        ],
-      };
-      
-      const levelHints = hints[level];
-      resolve(levelHints[Math.floor(Math.random() * levelHints.length)]);
-    }, 800);
-  });
-}
-
-function generateProblemAnalysis(problemText: string): Promise<{
+interface AnalysisResult {
+  extractedText: string;
+  confidence: number;
   topics: string[];
   concepts: string[];
   gradeEstimate: string;
   safeRephrase: string;
-  rsmNotice: string;
-}> {
-  return new Promise((resolve) => {
-    setTimeout(() => {
-      // Simulate problem analysis
-      resolve({
-        topics: ["Arithmetic", "Problem Solving"],
-        concepts: ["Pattern Recognition", "Algebraic Thinking"],
-        gradeEstimate: "Grade 5-6",
-        safeRephrase: problemText,
-        rsmNotice: "Look for patterns and relationships between quantities. RSM encourages finding structure before calculating.",
-      });
-    }, 500);
-  });
-}
-
-function generateSessionReflection(session: Session): Promise<{
-  conceptsPracticed: string[];
-  strategiesUsed: string[];
-  reflectionQuestions: string[];
-}> {
-  return new Promise((resolve) => {
-    setTimeout(() => {
-      resolve({
-        conceptsPracticed: ["Pattern Recognition", "Algebraic Reasoning", "Problem Decomposition"],
-        strategiesUsed: [
-          "Breaking the problem into smaller parts",
-          "Looking for patterns in the data",
-          "Testing with simpler examples",
-        ],
-        reflectionQuestions: [
-          "What was the key insight that helped you understand this problem?",
-          "Where else might you use this type of thinking?",
-          "What would you do differently if you saw a similar problem?",
-        ],
-      });
-    }, 500);
-  });
+  problemType: string;
 }
 
 export function useCoach() {
@@ -181,31 +23,50 @@ export function useCoach() {
   const processImage = useCallback(async (file: File) => {
     setIsProcessing(true);
     try {
-      const dataUrl = await new Promise<string>((resolve) => {
+      // Convert file to base64
+      const dataUrl = await new Promise<string>((resolve, reject) => {
         const reader = new FileReader();
         reader.onloadend = () => resolve(reader.result as string);
+        reader.onerror = reject;
         reader.readAsDataURL(file);
       });
 
-      const ocr = await simulateOCR(dataUrl);
-      const analysis = await generateProblemAnalysis(ocr.text);
+      // Call analyze-problem edge function with image
+      const { data, error } = await supabase.functions.invoke<AnalysisResult>('analyze-problem', {
+        body: { imageBase64: dataUrl }
+      });
+
+      if (error) {
+        console.error('Analysis error:', error);
+        toast.error('Failed to analyze image. Please try again or type the problem manually.');
+        return;
+      }
+
+      if (!data) {
+        toast.error('No response from analysis. Please try again.');
+        return;
+      }
 
       const problem: Problem = {
         id: Date.now().toString(),
         originalImage: dataUrl,
-        ocrText: ocr.text,
-        editedText: ocr.text,
-        confidence: ocr.confidence,
-        topics: analysis.topics,
-        concepts: analysis.concepts,
-        gradeEstimate: analysis.gradeEstimate,
-        safeRephrase: analysis.safeRephrase,
+        ocrText: data.extractedText,
+        editedText: data.extractedText,
+        confidence: data.confidence,
+        topics: data.topics,
+        concepts: data.concepts,
+        gradeEstimate: data.gradeEstimate,
+        safeRephrase: data.safeRephrase,
+        problemType: data.problemType,
       };
 
       setState({
         currentPhase: 'ocr-review',
         problem,
       });
+    } catch (err) {
+      console.error('Process image error:', err);
+      toast.error('Failed to process image. Please try again.');
     } finally {
       setIsProcessing(false);
     }
@@ -214,23 +75,41 @@ export function useCoach() {
   const processTypedProblem = useCallback(async (text: string) => {
     setIsProcessing(true);
     try {
-      const analysis = await generateProblemAnalysis(text);
+      // Call analyze-problem edge function with text
+      const { data, error } = await supabase.functions.invoke<AnalysisResult>('analyze-problem', {
+        body: { textInput: text }
+      });
+
+      if (error) {
+        console.error('Analysis error:', error);
+        toast.error('Failed to analyze problem. Please try again.');
+        return;
+      }
+
+      if (!data) {
+        toast.error('No response from analysis. Please try again.');
+        return;
+      }
 
       const problem: Problem = {
         id: Date.now().toString(),
         ocrText: text,
         editedText: text,
         confidence: 1,
-        topics: analysis.topics,
-        concepts: analysis.concepts,
-        gradeEstimate: analysis.gradeEstimate,
-        safeRephrase: analysis.safeRephrase,
+        topics: data.topics,
+        concepts: data.concepts,
+        gradeEstimate: data.gradeEstimate,
+        safeRephrase: data.safeRephrase,
+        problemType: data.problemType,
       };
 
       setState({
         currentPhase: 'ocr-review',
         problem,
       });
+    } catch (err) {
+      console.error('Process typed problem error:', err);
+      toast.error('Failed to analyze problem. Please try again.');
     } finally {
       setIsProcessing(false);
     }
@@ -244,7 +123,7 @@ export function useCoach() {
     const welcomeMessage: Message = {
       id: '1',
       role: 'coach',
-      content: `Great! Let's work on this together. Here's what I see:\n\n**${editedText}**\n\n${state.problem.safeRephrase ? `RSM-style observation: ${state.problem.safeRephrase}` : ''}\n\nLet's start: **What do we know from this problem, and what are we trying to find?**`,
+      content: `Great! Let's work on this together.\n\n**${editedText}**\n\nLet's start: **What do we know from this problem, and what are we trying to find?**`,
       timestamp: new Date(),
       type: 'text',
     };
@@ -289,22 +168,26 @@ export function useCoach() {
 
     setIsProcessing(true);
     try {
-      // Get AI response
-      let response = await simulateAIResponse(
-        SYSTEM_PROMPT,
-        updatedMessages,
-        state.problem.editedText
-      );
+      // Call tutoring-chat edge function
+      const { data, error } = await supabase.functions.invoke<{ content: string }>('tutoring-chat', {
+        body: { 
+          messages: updatedMessages.map(m => ({ role: m.role, content: m.content })),
+          problem: state.problem
+        }
+      });
 
-      // Guardrail check - scan for answer leaking
-      if (detectAnswerLeaking(response)) {
-        response = getRandomRefusal() + "\n\nLet me guide you to the next step instead. What have you figured out so far?";
+      if (error) {
+        console.error('Chat error:', error);
+        toast.error('Failed to get response. Please try again.');
+        return;
       }
+
+      const responseContent = data?.content || "Let's think about this step by step. What do you notice about the problem?";
 
       const coachMessage: Message = {
         id: (Date.now() + 1).toString(),
         role: 'coach',
-        content: response,
+        content: responseContent,
         timestamp: new Date(),
         type: 'text',
       };
@@ -316,6 +199,9 @@ export function useCoach() {
           messages: [...prev.session.messages, coachMessage],
         } : undefined,
       }));
+    } catch (err) {
+      console.error('Send message error:', err);
+      toast.error('Failed to send message. Please try again.');
     } finally {
       setIsProcessing(false);
     }
@@ -328,7 +214,23 @@ export function useCoach() {
     
     setIsProcessing(true);
     try {
-      const hintContent = await generateHint(nextLevel, state.problem.editedText);
+      // Call tutoring-chat with hint action
+      const { data, error } = await supabase.functions.invoke<{ content: string }>('tutoring-chat', {
+        body: { 
+          messages: state.session.messages.map(m => ({ role: m.role, content: m.content })),
+          problem: state.problem,
+          hintLevel: nextLevel,
+          action: 'hint'
+        }
+      });
+
+      if (error) {
+        console.error('Hint error:', error);
+        toast.error('Failed to get hint. Please try again.');
+        return;
+      }
+
+      const hintContent = data?.content || "Let me give you a hint. Think about the key relationships in this problem.";
 
       const hintMessage: Message = {
         id: Date.now().toString(),
@@ -348,6 +250,9 @@ export function useCoach() {
           hintsUsed: nextLevel,
         } : undefined,
       }));
+    } catch (err) {
+      console.error('Request hint error:', err);
+      toast.error('Failed to get hint. Please try again.');
     } finally {
       setIsProcessing(false);
     }
@@ -358,13 +263,58 @@ export function useCoach() {
 
     setIsProcessing(true);
     try {
-      const reflection = await generateSessionReflection(state.session);
+      // Call session-reflection edge function
+      const { data, error } = await supabase.functions.invoke<{
+        conceptsPracticed: string[];
+        strategiesUsed: string[];
+        reflectionQuestions: string[];
+      }>('session-reflection', {
+        body: { 
+          problem: state.problem,
+          messages: state.session.messages.map(m => ({ role: m.role, content: m.content }))
+        }
+      });
+
+      if (error) {
+        console.error('Reflection error:', error);
+        // Use fallback reflection
+      }
+
+      const reflection = data || {
+        conceptsPracticed: state.problem?.concepts || ["Problem Solving"],
+        strategiesUsed: ["Working through the problem step by step"],
+        reflectionQuestions: [
+          "What was the key insight that helped you understand this problem?",
+          "Where else might you use this type of thinking?",
+          "What would you do differently if you saw a similar problem?"
+        ]
+      };
 
       const finalSession: Session = {
         ...state.session,
         endTime: new Date(),
+        reflection,
+      };
+
+      setState({
+        currentPhase: 'summary',
+        problem: state.problem,
+        session: finalSession,
+      });
+    } catch (err) {
+      console.error('End session error:', err);
+      // Still end the session with fallback reflection
+      const finalSession: Session = {
+        ...state.session,
+        endTime: new Date(),
         reflection: {
-          ...reflection,
+          conceptsPracticed: state.problem?.concepts || ["Problem Solving"],
+          strategiesUsed: ["Working through the problem step by step"],
+          reflectionQuestions: [
+            "What was the key insight that helped you understand this problem?",
+            "Where else might you use this type of thinking?",
+            "What would you do differently if you saw a similar problem?"
+          ]
         },
       };
 
