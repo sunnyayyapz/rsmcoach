@@ -2,6 +2,7 @@ import { useState, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import type { Message, Problem, Session, TutoringState } from '@/types/coach';
 import { toast } from 'sonner';
+import { useAuth } from '@/contexts/AuthContext';
 
 interface AnalysisResult {
   extractedText: string;
@@ -14,6 +15,7 @@ interface AnalysisResult {
 }
 
 export function useCoach() {
+  const { user } = useAuth();
   const [state, setState] = useState<TutoringState>({
     currentPhase: 'upload',
   });
@@ -339,10 +341,30 @@ export function useCoach() {
         problem: state.problem,
         session: finalSession,
       });
+
+      // Save session to database
+      if (user && state.problem) {
+        const durationSeconds = finalSession.endTime && finalSession.startTime
+          ? Math.round((finalSession.endTime.getTime() - finalSession.startTime.getTime()) / 1000)
+          : null;
+
+        await supabase.from('sessions').insert({
+          user_id: user.id,
+          problem_text: state.problem.editedText || state.problem.ocrText,
+          problem_type: state.problem.problemType || null,
+          topics: state.problem.topics || [],
+          concepts: state.problem.concepts || [],
+          grade_estimate: state.problem.gradeEstimate || null,
+          hints_used: finalSession.hintsUsed,
+          messages_count: finalSession.messages.length,
+          duration_seconds: durationSeconds,
+          started_at: finalSession.startTime.toISOString(),
+          ended_at: finalSession.endTime?.toISOString() || null,
+        });
+      }
     } catch (err) {
       console.error('End session error:', err);
-      // Still end the session with fallback reflection
-      const finalSession: Session = {
+      const fallbackSession: Session = {
         ...state.session,
         endTime: new Date(),
         reflection: {
@@ -359,12 +381,12 @@ export function useCoach() {
       setState({
         currentPhase: 'summary',
         problem: state.problem,
-        session: finalSession,
+        session: fallbackSession,
       });
     } finally {
       setIsProcessing(false);
     }
-  }, [state.session, state.problem]);
+  }, [state.session, state.problem, user]);
 
   const startNewSession = useCallback(() => {
     setState({ currentPhase: 'upload' });

@@ -38,6 +38,54 @@ export type Database = {
         }
         Relationships: []
       }
+      sessions: {
+        Row: {
+          concepts: string[] | null
+          created_at: string
+          duration_seconds: number | null
+          ended_at: string | null
+          grade_estimate: string | null
+          hints_used: number
+          id: string
+          messages_count: number
+          problem_text: string
+          problem_type: string | null
+          started_at: string
+          topics: string[] | null
+          user_id: string
+        }
+        Insert: {
+          concepts?: string[] | null
+          created_at?: string
+          duration_seconds?: number | null
+          ended_at?: string | null
+          grade_estimate?: string | null
+          hints_used?: number
+          id?: string
+          messages_count?: number
+          problem_text: string
+          problem_type?: string | null
+          started_at?: string
+          topics?: string[] | null
+          user_id: string
+        }
+        Update: {
+          concepts?: string[] | null
+          created_at?: string
+          duration_seconds?: number | null
+          ended_at?: string | null
+          grade_estimate?: string | null
+          hints_used?: number
+          id?: string
+          messages_count?: number
+          problem_text?: string
+          problem_type?: string | null
+          started_at?: string
+          topics?: string[] | null
+          user_id?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
