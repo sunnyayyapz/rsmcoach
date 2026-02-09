@@ -123,7 +123,7 @@ export function useCoach() {
     const welcomeMessage: Message = {
       id: '1',
       role: 'coach',
-      content: `Great! Let's work on this together.\n\n**${editedText}**\n\nLet's start: **What do we know from this problem, and what are we trying to find?**`,
+      content: `Great! Let's work on this together.\n\n**${editedText}**`,
       timestamp: new Date(),
       type: 'text',
     };
@@ -143,6 +143,44 @@ export function useCoach() {
       problem: updatedProblem,
       session,
     });
+
+    // Generate initial approach/hint
+    setIsProcessing(true);
+    try {
+      const { data, error } = await supabase.functions.invoke<{ content: string }>('tutoring-chat', {
+        body: { 
+          messages: [welcomeMessage].map(m => ({ role: m.role, content: m.content })),
+          problem: updatedProblem,
+          hintLevel: 1,
+          action: 'hint'
+        }
+      });
+
+      if (!error && data?.content) {
+        const approachMessage: Message = {
+          id: Date.now().toString(),
+          role: 'coach',
+          content: data.content,
+          timestamp: new Date(),
+          type: 'hint',
+          hintLevel: 1,
+        };
+
+        setState(prev => ({
+          ...prev,
+          session: prev.session ? {
+            ...prev.session,
+            messages: [...prev.session.messages, approachMessage],
+            hintsUsed: 1,
+          } : undefined,
+        }));
+        setHintsUsed(1);
+      }
+    } catch (err) {
+      console.error('Initial approach error:', err);
+    } finally {
+      setIsProcessing(false);
+    }
   }, [state.problem]);
 
   const sendMessage = useCallback(async (content: string) => {
