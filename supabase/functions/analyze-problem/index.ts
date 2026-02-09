@@ -30,32 +30,38 @@ serve(async (req) => {
       });
       userContent.push({
         type: "text",
-        text: `Extract the math problem from this image. Return ONLY a JSON object with these fields:
+        text: `You are an expert OCR system for math problems. Extract the COMPLETE and EXACT text from this image.
+
+CRITICAL RULES:
+1. Extract EVERY word and number - do not skip or summarize anything
+2. Preserve the FULL question exactly as written
+3. Include all parts: question text, numbers, equations, answer choices if any
+4. For handwritten text, do your best to read it accurately
+
+Return ONLY a valid JSON object (no markdown, no code blocks, no explanation):
 {
-  "extractedText": "the exact math problem text extracted from the image",
-  "confidence": 0.0 to 1.0 indicating how confident you are in the extraction,
-  "topics": ["topic1", "topic2"] - mathematical topics this problem covers,
-  "concepts": ["concept1", "concept2"] - key concepts needed to solve this,
-  "gradeEstimate": "estimated grade level (e.g., 'Grade 5-6')",
-  "safeRephrase": "restate the problem clearly without solving it",
+  "extractedText": "THE COMPLETE EXACT TEXT FROM THE IMAGE - every single word",
+  "confidence": 0.0 to 1.0,
+  "topics": ["topic1", "topic2"],
+  "concepts": ["concept1"],
+  "gradeEstimate": "Grade X-Y",
+  "safeRephrase": "clear restatement of the problem",
   "problemType": "algebra|arithmetic|geometry|word-problem|percentage|ratio|pattern|other"
 }
 
-Be precise with mathematical notation. Use ^ for exponents, * for multiplication, / for division.
-For fractions, use format like "3/4" or write them out.
-Do NOT solve the problem. Only extract and analyze it.`
+Remember: extractedText must contain the ENTIRE question, not a summary.`
       });
     } else if (textInput) {
       userContent.push({
         type: "text",
-        text: `Analyze this math problem (do NOT solve it). Return ONLY a JSON object:
+        text: `Analyze this math problem (do NOT solve it). Return ONLY a valid JSON object (no markdown, no code blocks):
 {
-  "extractedText": "${textInput}",
+  "extractedText": "${textInput.replace(/"/g, '\\"')}",
   "confidence": 1.0,
-  "topics": ["topic1", "topic2"] - mathematical topics this problem covers,
-  "concepts": ["concept1", "concept2"] - key concepts needed to solve this,
-  "gradeEstimate": "estimated grade level (e.g., 'Grade 5-6')",
-  "safeRephrase": "restate the problem clearly without solving it",
+  "topics": ["topic1", "topic2"],
+  "concepts": ["concept1", "concept2"],
+  "gradeEstimate": "Grade X-Y",
+  "safeRephrase": "clear restatement",
   "problemType": "algebra|arithmetic|geometry|word-problem|percentage|ratio|pattern|other"
 }
 
@@ -82,7 +88,7 @@ Problem: ${textInput}`
             content: userContent
           }
         ],
-        max_tokens: 1000,
+        max_tokens: 2000, // Increased to handle longer problems
       }),
     });
 
@@ -107,27 +113,68 @@ Problem: ${textInput}`
     const data = await response.json();
     const content = data.choices?.[0]?.message?.content || "";
     
-    // Parse JSON from response (handle markdown code blocks)
-    let jsonStr = content;
+    console.log("Raw AI response:", content.substring(0, 500));
+    
+    // Parse JSON from response - try multiple extraction methods
+    let jsonStr = content.trim();
+    
+    // Method 1: Check for markdown code blocks
     const jsonMatch = content.match(/```(?:json)?\s*([\s\S]*?)```/);
     if (jsonMatch) {
       jsonStr = jsonMatch[1].trim();
     }
     
+    // Method 2: Find JSON object directly
+    if (!jsonStr.startsWith('{')) {
+      const jsonStart = content.indexOf('{');
+      const jsonEnd = content.lastIndexOf('}');
+      if (jsonStart !== -1 && jsonEnd !== -1) {
+        jsonStr = content.substring(jsonStart, jsonEnd + 1);
+      }
+    }
+    
     try {
       const parsed = JSON.parse(jsonStr);
-      return new Response(JSON.stringify(parsed), {
+      
+      // Validate that extractedText exists and is not empty
+      if (!parsed.extractedText || parsed.extractedText.trim() === '') {
+        throw new Error("No extracted text found");
+      }
+      
+      // Clean up the response - never expose raw JSON to user
+      return new Response(JSON.stringify({
+        extractedText: parsed.extractedText,
+        confidence: parsed.confidence || 0.8,
+        topics: Array.isArray(parsed.topics) ? parsed.topics : ["Mathematics"],
+        concepts: Array.isArray(parsed.concepts) ? parsed.concepts : ["Problem Solving"],
+        gradeEstimate: parsed.gradeEstimate || "Unknown",
+        safeRephrase: parsed.safeRephrase || parsed.extractedText,
+        problemType: parsed.problemType || "other"
+      }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
-    } catch {
-      // If JSON parsing fails, return raw extracted text
+    } catch (parseError) {
+      console.error("JSON parse error:", parseError, "Content:", jsonStr.substring(0, 200));
+      
+      // Fallback: Clean any visible JSON from the content for display
+      let cleanText = content
+        .replace(/```(?:json)?[\s\S]*?```/g, '') // Remove code blocks
+        .replace(/\{[\s\S]*?\}/g, '') // Remove JSON objects
+        .replace(/["{}[\]]/g, '') // Remove JSON characters
+        .trim();
+      
+      // If still empty, try to extract meaningful text
+      if (!cleanText) {
+        cleanText = "Could not extract text from image. Please try again or type the problem manually.";
+      }
+      
       return new Response(JSON.stringify({
-        extractedText: content,
-        confidence: 0.7,
+        extractedText: cleanText,
+        confidence: 0.5,
         topics: ["Mathematics"],
         concepts: ["Problem Solving"],
         gradeEstimate: "Unknown",
-        safeRephrase: content,
+        safeRephrase: cleanText,
         problemType: "other"
       }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
