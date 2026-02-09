@@ -4,7 +4,8 @@ import { FileUpload } from '@/components/coach/FileUpload';
 import { Logo } from '@/components/coach/Logo';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
-import { Keyboard, Camera, Sparkles, Shield, Brain } from 'lucide-react';
+import { Keyboard, Camera, Sparkles, Shield, Brain, LogOut } from 'lucide-react';
+import { useAuth } from '@/contexts/AuthContext';
 
 interface HomeScreenProps {
   onImageUpload: (file: File) => void;
@@ -15,6 +16,7 @@ interface HomeScreenProps {
 export function HomeScreen({ onImageUpload, onTextSubmit, isProcessing }: HomeScreenProps) {
   const [inputMode, setInputMode] = useState<'photo' | 'type'>('photo');
   const [typedProblem, setTypedProblem] = useState('');
+  const { user, signOut } = useAuth();
 
   const handleTextSubmit = () => {
     if (typedProblem.trim()) {
@@ -26,8 +28,12 @@ export function HomeScreen({ onImageUpload, onTextSubmit, isProcessing }: HomeSc
     <div className="min-h-screen coach-gradient">
       {/* Header */}
       <header className="pt-8 pb-4 px-4">
-        <div className="max-w-lg mx-auto flex justify-center">
+        <div className="max-w-lg mx-auto flex items-center justify-between">
           <Logo size="lg" />
+          <Button variant="ghost" size="sm" onClick={signOut} className="gap-2 text-muted-foreground">
+            <LogOut className="w-4 h-4" />
+            Sign out
+          </Button>
         </div>
       </header>
 
