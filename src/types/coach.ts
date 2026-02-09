@@ -1,12 +1,3 @@
-export interface Message {
-  id: string;
-  role: 'student' | 'coach';
-  content: string;
-  timestamp: Date;
-  type?: 'text' | 'hint' | 'question' | 'reflection';
-  hintLevel?: 1 | 2 | 3;
-}
-
 export interface Problem {
   id: string;
   originalImage?: string;
@@ -15,8 +6,18 @@ export interface Problem {
   confidence: number;
   topics: string[];
   concepts: string[];
-  gradeEstimate?: string;
-  safeRephrase?: string;
+  gradeEstimate: string;
+  safeRephrase: string;
+  problemType?: string;
+}
+
+export interface Message {
+  id: string;
+  role: 'student' | 'coach';
+  content: string;
+  timestamp: Date;
+  type?: 'text' | 'hint' | 'question' | 'reflection';
+  hintLevel?: 1 | 2 | 3;
 }
 
 export interface Session {
