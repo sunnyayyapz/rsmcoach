@@ -6,6 +6,8 @@ import { Button } from '@/components/ui/button';
 import { useAuth } from '@/contexts/AuthContext';
 import { lovable } from '@/integrations/lovable/index';
 import { toast } from 'sonner';
+import { Capacitor } from '@capacitor/core';
+import { Browser } from '@capacitor/browser';
 
 const Auth = () => {
   const { user, loading } = useAuth();
@@ -18,12 +20,25 @@ const Auth = () => {
   }, [user, loading, navigate]);
 
   const handleGoogleSignIn = async () => {
-    const { error } = await lovable.auth.signInWithOAuth('google', {
-      redirect_uri: window.location.origin,
-    });
-    if (error) {
-      toast.error('Failed to sign in with Google. Please try again.');
-      console.error('Google sign-in error:', error);
+    if (Capacitor.isNativePlatform()) {
+      // On native, we need to open the OAuth URL in the system browser
+      // and handle the redirect back via deep link / universal link
+      const redirectUri = 'https://rsmcoach.lovable.app';
+      const { error } = await lovable.auth.signInWithOAuth('google', {
+        redirect_uri: redirectUri,
+      });
+      if (error) {
+        toast.error('Failed to sign in with Google. Please try again.');
+        console.error('Google sign-in error:', error);
+      }
+    } else {
+      const { error } = await lovable.auth.signInWithOAuth('google', {
+        redirect_uri: window.location.origin,
+      });
+      if (error) {
+        toast.error('Failed to sign in with Google. Please try again.');
+        console.error('Google sign-in error:', error);
+      }
     }
   };
 
